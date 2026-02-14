@@ -210,32 +210,114 @@
             localStorage.setItem('mna_reviews', JSON.stringify(reviewsData));
         }
 
-        // Try to load server-side approved reviews (falls back to localStorage)
+        // Try to load server-side approved reviews (falls back to localStorage) — merge + sync local pending reviews
         (async function loadServerReviews() {
+            const localSnapshot = JSON.parse(localStorage.getItem('mna_reviews') || '[]') || [];
             try {
                 const res = await fetch('reviews_list.php');
                 if (res.ok) {
                     const json = await res.json();
-                    if (Array.isArray(json) && json.length > 0) {
-                        // map server fields to client format
-                        reviewsData = json.map(r => ({
-                            id: r.id,
-                            name: r.name || 'Membre',
-                            initials: (r.name || 'M').split(' ').map(s=>s.charAt(0)).slice(0,2).join(''),
-                            rating: parseInt(r.rating) || 5,
-                            date: r.created_at ? new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '',
-                            comment: r.comment || '',
-                            gradient: 'from-[var(--accent)] to-[var(--accent-secondary)]',
-                            approved: !!r.approved
-                        }));
-                        localStorage.setItem('mna_reviews', JSON.stringify(reviewsData));
+                    const serverReviews = Array.isArray(json) ? json.map(r => ({
+                        id: r.id,
+                        name: r.name || 'Membre',
+                        initials: (r.name || 'M').split(' ').map(s=>s.charAt(0)).slice(0,2).join(''),
+                        rating: parseInt(r.rating) || 5,
+                        date: r.created_at ? new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '',
+                        comment: r.comment || '',
+                        gradient: 'from-[var(--accent)] to-[var(--accent-secondary)]',
+                        approved: !!r.approved
+                    })) : [];
+
+                    const keyOf = v => ((v.comment||'').trim().toLowerCase() + '|' + (v.rating||'') + '|' + (v.name||'').trim().toLowerCase());
+                    const serverKeys = new Set(serverReviews.map(keyOf));
+
+                    // keep server as canonical, but merge any local pending reviews that are not duplicates
+                    const pendingLocal = (localSnapshot || []).filter(l => String(l.id).startsWith('local-') || l._local);
+                    const merged = serverReviews.slice();
+                    pendingLocal.forEach(l => {
+                        const k = keyOf(l);
+                        if (!serverKeys.has(k)) merged.unshift(l);
+                    });
+
+                    reviewsData = merged;
+                    localStorage.setItem('mna_reviews', JSON.stringify(reviewsData));
+
+                    // Best-effort: upload pending local reviews to server (will replace local ids on success)
+                    for (const l of pendingLocal) {
+                        const k = keyOf(l);
+                        if (serverKeys.has(k)) continue;
+                        try {
+                            const addRes = await fetch('reviews_add.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: l.name, rating: l.rating, comment: l.comment }) });
+                            if (addRes.ok) {
+                                const saved = await addRes.json();
+                                // replace local id with server id in reviewsData
+                                reviewsData = reviewsData.map(r => r.id === l.id ? ({ ...r, id: saved.id, approved: !!saved.approved, date: saved.created_at ? new Date(saved.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : r.date }) : r);
+                                serverKeys.add(k);
+                                localStorage.setItem('mna_reviews', JSON.stringify(reviewsData));
+                                renderReviews();
+                            }
+                        } catch (err) {
+                            console.warn('sync add review failed', err);
+                        }
                     }
+
+                    return;
                 }
             } catch (e) {
                 // keep local snapshot
                 console.warn('reviews_list.php unavailable, using local snapshot');
             }
+
+            // fallback to local snapshot
+            reviewsData = localSnapshot;
         })();
+
+        // When connection is restored try to sync pending local reviews to server
+        async function syncLocalReviewsToServer() {
+            if (!navigator.onLine) return;
+            let local = JSON.parse(localStorage.getItem('mna_reviews') || '[]') || [];
+            const pending = local.filter(r => String(r.id).startsWith('local-') || r._local);
+            if (pending.length === 0) return;
+
+            try {
+                const res = await fetch('reviews_list.php');
+                const server = res.ok ? await res.json() : [];
+                const serverKey = s => ((s.comment||'').trim().toLowerCase() + '|' + (s.rating||'') + '|' + (s.name||'').trim().toLowerCase());
+                const serverKeys = new Set((server || []).map(serverKey));
+                let changed = false;
+
+                for (const p of pending) {
+                    const k = serverKey(p);
+                    if (serverKeys.has(k)) {
+                        const match = (server || []).find(r => serverKey(r) === k);
+                        if (match) {
+                            local = local.map(x => x.id === p.id ? ({ ...x, id: match.id, approved: !!match.approved, _local: false }) : x);
+                            changed = true;
+                            continue;
+                        }
+                    }
+
+                    try {
+                        const addRes = await fetch('reviews_add.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: p.name, rating: p.rating, comment: p.comment }) });
+                        if (addRes.ok) {
+                            const saved = await addRes.json();
+                            local = local.map(x => x.id === p.id ? ({ ...x, id: saved.id, approved: !!saved.approved, _local: false }) : x);
+                            changed = true;
+                        }
+                    } catch (err) { console.warn('sync add failed', err); }
+                }
+
+                if (changed) {
+                    localStorage.setItem('mna_reviews', JSON.stringify(local));
+                    reviewsData = local;
+                    renderReviews();
+                }
+            } catch (err) {
+                console.warn('syncLocalReviewsToServer failed', err);
+            }
+        }
+
+        window.addEventListener('online', syncLocalReviewsToServer);
 
         let currentRating = 0;
 
@@ -281,7 +363,7 @@
         }
 
         // ===== SUBMIT REVIEW =====
-        function submitReview() {
+        async function submitReview() {
             const comment = document.getElementById('review-comment').value;
             
             if (currentRating === 0) {
@@ -300,14 +382,18 @@
                 return;
             }
 
+            // create a local-pending review id so we can sync later if offline
+            const localId = 'local-' + Date.now();
             const newReview = {
-                id: Date.now(),
+                id: localId,
+                _local: true,
                 name: currentUser.firstName + ' ' + currentUser.lastName.charAt(0) + '.',
                 initials: currentUser.firstName.charAt(0) + currentUser.lastName.charAt(0),
                 rating: currentRating,
                 date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
                 comment: comment,
-                gradient: 'from-[var(--accent)] to-[var(--accent-secondary)]'
+                gradient: 'from-[var(--accent)] to-[var(--accent-secondary)]',
+                approved: false
             };
 
             // attempt server submit first
@@ -339,13 +425,16 @@
                 console.warn('reviews_add.php failed — falling back to local', err);
             }
 
-            // fallback: local-only
+            // fallback: save as local-pending (will be synced when online)
             reviewsData.unshift(newReview);
             localStorage.setItem('mna_reviews', JSON.stringify(reviewsData));
             renderReviews();
             document.getElementById('review-comment').value = '';
             setRating(0);
             showToast('Merci pour votre avis (mode local)', 'success');
+
+            // try to sync immediately if we regained connectivity
+            if (navigator.onLine) syncLocalReviewsToServer();
         }
 
         // ===== TOAST =====

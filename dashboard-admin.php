@@ -651,27 +651,79 @@ $user_json = json_encode($_SESSION['user']);
         }
 
         async function loadAdminReviewsFromServer() {
+            const localSnapshot = JSON.parse(localStorage.getItem('mna_reviews') || '[]') || [];
+
             // Try server first (admin sees all reviews)
             if (window.__MNA_SERVER_USER) {
                 try {
                     const res = await fetch('reviews_list.php');
                     if (res.ok) {
                         const json = await res.json();
-                        if (Array.isArray(json)) {
-                            adminReviews = json.map(r => ({
-                                id: r.id,
-                                name: r.name || 'Membre',
-                                initials: (r.name || 'M').split(' ').map(s=>s.charAt(0)).slice(0,2).join(''),
-                                rating: parseInt(r.rating) || 5,
-                                date: r.created_at ? new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '',
-                                comment: r.comment || '',
-                                gradient: 'from-[var(--accent)] to-[var(--accent-secondary)]',
-                                approved: !!r.approved
-                            }));
-                            localStorage.setItem('mna_reviews', JSON.stringify(adminReviews));
-                            renderAdminReviews();
-                            return;
+                        const serverReviews = Array.isArray(json) ? json.map(r => ({
+                            id: r.id,
+                            name: r.name || 'Membre',
+                            initials: (r.name || 'M').split(' ').map(s=>s.charAt(0)).slice(0,2).join(''),
+                            rating: parseInt(r.rating) || 5,
+                            date: r.created_at ? new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '',
+                            comment: r.comment || '',
+                            gradient: 'from-[var(--accent)] to-[var(--accent-secondary)]',
+                            approved: !!r.approved
+                        })) : [];
+
+                        const keyOf = v => ((v.comment||'').trim().toLowerCase() + '|' + (v.rating||'') + '|' + (v.name||'').trim().toLowerCase());
+                        const serverKeys = new Set(serverReviews.map(keyOf));
+
+                        // Merge local pending reviews for immediate admin visibility
+                        const pendingLocal = (localSnapshot || []).filter(l => String(l.id).startsWith('local-') || l._local);
+                        const merged = serverReviews.slice();
+                        pendingLocal.forEach(l => {
+                            const k = keyOf(l);
+                            if (!serverKeys.has(k)) merged.unshift(l);
+                        });
+
+                        adminReviews = merged;
+                        localStorage.setItem('mna_reviews', JSON.stringify(adminReviews));
+                        renderAdminReviews();
+
+                        // Best-effort: push pending local reviews to server (admin-add will auto-approve)
+                        for (const l of pendingLocal) {
+                            const k = keyOf(l);
+                            if (serverKeys.has(k)) continue;
+                            try {
+                                const addRes = await fetch('reviews_add.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: l.name, rating: l.rating, comment: l.comment }) });
+                                if (addRes.ok) {
+                                    const saved = await addRes.json();
+                                    // replace local id with server id in adminReviews
+                                    adminReviews = adminReviews.map(a => a.id === l.id ? ({ ...a, id: saved.id, approved: !!saved.approved, date: saved.created_at ? new Date(saved.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : a.date }) : a);
+                                    serverKeys.add(k);
+                                    localStorage.setItem('mna_reviews', JSON.stringify(adminReviews));
+                                }
+                            } catch (err) { console.warn('push local review failed', err); }
                         }
+
+                        // Refresh authoritative server list after pushing
+                        try {
+                            const res2 = await fetch('reviews_list.php');
+                            if (res2.ok) {
+                                const j2 = await res2.json();
+                                if (Array.isArray(j2)) {
+                                    adminReviews = j2.map(r => ({
+                                        id: r.id,
+                                        name: r.name || 'Membre',
+                                        initials: (r.name || 'M').split(' ').map(s=>s.charAt(0)).slice(0,2).join(''),
+                                        rating: parseInt(r.rating) || 5,
+                                        date: r.created_at ? new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '',
+                                        comment: r.comment || '',
+                                        gradient: 'from-[var(--accent)] to-[var(--accent-secondary)]',
+                                        approved: !!r.approved
+                                    }));
+                                    localStorage.setItem('mna_reviews', JSON.stringify(adminReviews));
+                                    renderAdminReviews();
+                                }
+                            }
+                        } catch (err) { /* ignore */ }
+
+                        return;
                     }
                 } catch (err) {
                     console.warn('reviews_list.php failed — using local snapshot', err);
@@ -679,7 +731,7 @@ $user_json = json_encode($_SESSION['user']);
             }
 
             // fallback to localStorage snapshot
-            adminReviews = JSON.parse(localStorage.getItem('mna_reviews') || '[]') || [];
+            adminReviews = localSnapshot;
             renderAdminReviews();
         }
 
@@ -1304,6 +1356,8 @@ $user_json = json_encode($_SESSION['user']);
         // ===== INIT =====
         renderRecentReservations();
         renderRecentClients();
+        // sync pending local reviews when connection is restored
+        window.addEventListener('online', loadAdminReviewsFromServer);
         
         // Close modal on backdrop click
         document.getElementById('delete-modal').addEventListener('click', function(e) {

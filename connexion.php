@@ -2,8 +2,9 @@
 session_start();
 require_once __DIR__ . '/config.php';
 
-// If already logged in, redirect to appropriate dashboard
-if (isset($_SESSION['user'])) {
+// If already logged in (and not submitting the login form), redirect to appropriate dashboard
+// Allow POST requests to this page so a logged-in user can submit new credentials to switch accounts.
+if (isset($_SESSION['user']) && ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     if (isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'admin') {
         header('Location: dashboard-admin.php');
         exit;

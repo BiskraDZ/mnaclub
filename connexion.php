@@ -2,17 +2,8 @@
 session_start();
 require_once __DIR__ . '/config.php';
 
-// If already logged in (and not submitting the login form), redirect to appropriate dashboard
-// Allow POST requests to this page so a logged-in user can submit new credentials to switch accounts.
-if (isset($_SESSION['user']) && ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-    if (isset($_SESSION['user']['role']) && $_SESSION['user']['role'] === 'admin') {
-        header('Location: dashboard-admin.php');
-        exit;
-    } else {
-        header('Location: dashboard-client.php');
-        exit;
-    }
-}
+// Expose server session info to the page but DO NOT auto-redirect on GET — allow switching accounts.
+$server_user = $_SESSION['user'] ?? null;
 
 $login_error = '';
 // Handle POST login (using DB when available)
@@ -336,6 +327,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
 
             <div class="form-card">
+                <?php if (!empty($server_user)): ?>
+                    <div class="mb-4 p-3 rounded-lg bg-yellow-900 text-yellow-200">
+                        Vous êtes actuellement connecté en tant que <strong><?php echo htmlspecialchars($server_user['email'] ?? $server_user['firstName'] ?? ''); ?></strong> — soumettre un autre compte remplacera la session actuelle. <a href="logout.php" class="underline">Se déconnecter</a>
+                    </div>
+                <?php endif; ?>
                 <form id="login-form" method="POST" action="connexion.php" onsubmit="handleLogin(event)" autocomplete="off" novalidate>
                     <div class="form-group">
                         <label class="form-label" for="email">Email</label>

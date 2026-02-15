@@ -2,8 +2,9 @@
 session_start();
 require_once __DIR__ . '/config.php';
 
-// Expose server session info to the page but DO NOT auto-redirect on GET — allow switching accounts.
-$server_user = $_SESSION['user'] ?? null;
+// Determine current session user (if any). Do NOT auto-redirect on GET —
+// showing the login form lets a logged-in user switch accounts intentionally.
+$sessionUser = isset($_SESSION['user']) ? $_SESSION['user'] : null;
 
 $login_error = '';
 // Handle POST login (using DB when available)
@@ -327,11 +328,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
 
             <div class="form-card">
-                <?php if (!empty($server_user)): ?>
-                    <div class="mb-4 p-3 rounded-lg bg-yellow-900 text-yellow-200">
-                        Vous êtes actuellement connecté en tant que <strong><?php echo htmlspecialchars($server_user['email'] ?? $server_user['firstName'] ?? ''); ?></strong> — soumettre un autre compte remplacera la session actuelle. <a href="logout.php" class="underline">Se déconnecter</a>
+                <?php if ($sessionUser): ?>
+                    <div class="p-3 mb-4 rounded-lg bg-yellow-900 text-yellow-100 text-sm">
+                        Vous êtes actuellement connecté en tant que <strong><?php echo htmlspecialchars($sessionUser['email'] ?? ($sessionUser['firstName'] . ' ' . $sessionUser['lastName'])); ?></strong> — pour changer de compte, saisissez de nouveaux identifiants ou <a href="logout.php" class="underline">déconnectez‑vous</a>.
                     </div>
                 <?php endif; ?>
+
                 <form id="login-form" method="POST" action="connexion.php" onsubmit="handleLogin(event)" autocomplete="off" novalidate>
                     <div class="form-group">
                         <label class="form-label" for="email">Email</label>

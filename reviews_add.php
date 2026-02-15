@@ -15,6 +15,13 @@ if ($rating < 1 || $rating > 5 || $comment === '') {
     exit;
 }
 
+// Server-side validation: limit comment length to avoid abuse
+if (mb_strlen($comment) > 2000) {
+    http_response_code(400);
+    echo json_encode(['error' => 'comment_too_long']);
+    exit;
+}
+
 // default: unapproved for public submissions; admins can auto-approve
 $approved = (!empty($_SESSION['user']) && ($_SESSION['user']['role'] ?? '') === 'admin') ? 1 : 0;
 

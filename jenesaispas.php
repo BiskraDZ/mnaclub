@@ -389,18 +389,20 @@
             `).join('');
         }
 
+        function escapeHTML(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
         function renderReviews() {
             const list = document.getElementById('reviews-list');
             list.innerHTML = reviews.map(r => `
                 <div class="p-4 border border-[var(--border)] rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
                         <div class="flex items-center gap-2 mb-2">
-                            <span class="font-semibold">${r.name}</span>
+                            <span class="font-semibold">${escapeHTML(r.name)}</span>
                             <div class="flex">
                                 ${Array(5).fill(0).map((_, i) => `<svg width="14" height="14" viewBox="0 0 24 24" fill="${i < r.rating ? '#ff6b9d' : 'none'}" stroke="#ff6b9d" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`).join('')}
                             </div>
                         </div>
-                        <p class="text-[var(--muted)]">"${r.comment}"</p>
+                        <p class="text-[var(--muted)]">"${escapeHTML(r.comment)}"</p>
                     </div>
                     <div class="flex gap-2">
                         ${r.approved 

@@ -322,6 +322,8 @@
         let currentRating = 0;
 
         // ===== RENDER REVIEWS =====
+        function escapeHTML(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
         function renderReviews() {
             const container = document.getElementById('reviews-container');
             
@@ -332,12 +334,12 @@
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="${i < review.rating ? 'var(--accent)' : 'none'}" stroke="${i < review.rating ? 'var(--accent)' : 'var(--muted)'}" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                         `).join('')}
                     </div>
-                    <p class="text-[var(--muted)] mb-6 leading-relaxed">"${review.comment}"</p>
+                    <p class="text-[var(--muted)] mb-6 leading-relaxed">"${escapeHTML(review.comment)}"</p>
                     <div class="flex items-center gap-3">
-                        <div class="w-12 h-12 rounded-full bg-gradient-to-br ${review.gradient} flex items-center justify-center font-semibold">${review.initials}</div>
+                        <div class="w-12 h-12 rounded-full bg-gradient-to-br ${review.gradient} flex items-center justify-center font-semibold">${escapeHTML(review.initials)}</div>
                         <div>
-                            <p class="font-medium">${review.name}</p>
-                            <p class="text-sm text-[var(--muted)]">${review.date}</p>
+                            <p class="font-medium">${escapeHTML(review.name)}</p>
+                            <p class="text-sm text-[var(--muted)]">${escapeHTML(review.date)}</p>
                         </div>
                     </div>
                 </div>
@@ -373,6 +375,12 @@
 
             if (!comment.trim()) {
                 showToast('Veuillez ecrire un commentaire', 'error');
+                return;
+            }
+
+            // client-side length validation
+            if (comment.length > 2000) {
+                showToast('Commentaire trop long (max 2000 caractères)', 'error');
                 return;
             }
 
@@ -419,6 +427,11 @@
                     document.getElementById('review-comment').value = '';
                     setRating(0);
                     showToast('Merci pour votre avis !', 'success');
+                    return;
+                } else if (res.status === 400) {
+                    // server-side validation failed
+                    const err = await res.json().catch(()=>({ error: 'invalid' }));
+                    showToast(err.error || 'Format invalide', 'error');
                     return;
                 }
             } catch (err) {

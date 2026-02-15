@@ -436,6 +436,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const password = document.getElementById('password').value;
             const submitBtn = document.getElementById('submit-btn');
 
+            // If a session already exists, confirm the user wants to replace it
+            if (window.__SESSION_USER_EXISTS) {
+                const ok = confirm('Vous êtes actuellement connecté. Continuer remplacera la session en cours et vous connectera avec les nouveaux identifiants — continuer ?');
+                if (!ok) return;
+            }
+
             // Reset errors
             document.querySelectorAll('.form-error').forEach(el => el.classList.remove('show'));
             document.querySelectorAll('.form-input').forEach(el => el.classList.remove('error'));
@@ -490,6 +496,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if (!empty($login_error)): ?>
         document.addEventListener('DOMContentLoaded', function(){ showToast('<?php echo addslashes($login_error); ?>','error'); });
         <?php endif; ?>
+
+        // Expose flag to JS so we can warn user when they are replacing an existing session
+        window.__SESSION_USER_EXISTS = <?php echo $sessionUser ? 'true' : 'false'; ?>;
 
         // Clear login fields on page load to force fresh input
         document.addEventListener('DOMContentLoaded', function(){

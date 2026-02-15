@@ -41,11 +41,9 @@ function is_active($file) { global $current; return $current === $file ? 'active
                     echo '<a href="'.phpspecialchars($dash).'" class="btn-secondary text-sm">Mon Espace</a>';
                     echo '<a href="logout.php" class="btn-primary text-sm">Deconnexion</a>';
                 } else {
-                    // Show Connexion / S'inscrire only on index page
-                    if ($current === 'index.php') {
-                        echo '<a href="connexion.php" class="btn-secondary text-sm">Connexion</a>';
-                        echo '<a href="inscription.php" class="btn-primary text-sm ml-2">S\'inscrire</a>';
-                    }
+                    // Show Connexion / S'inscrire on all pages for unauthenticated users
+                    echo '<a href="connexion.php" class="btn-secondary text-sm">Connexion</a>';
+                    echo '<a href="inscription.php" class="btn-primary text-sm ml-2">S\'inscrire</a>';
                 }
                 ?>
             </div>
@@ -89,11 +87,9 @@ function is_active($file) { global $current; return $current === $file ? 'active
                 echo '<a href="'.phpspecialchars($dash).'" class="btn-secondary text-center">Mon Espace</a>';
                 echo '<a href="logout.php" class="btn-primary text-center">Deconnexion</a>';
             } else {
-                // Show public auth CTAs in mobile menu only on index
-                if ($current === 'index.php') {
-                    echo '<a href="connexion.php" class="btn-secondary text-center">Connexion</a>';
-                    echo '<a href="inscription.php" class="btn-primary text-center">S\'inscrire</a>';
-                }
+                // Show public auth CTAs on all pages (mobile menu)
+                echo '<a href="connexion.php" class="btn-secondary text-center">Connexion</a>';
+                echo '<a href="inscription.php" class="btn-primary text-center">S\'inscrire</a>';
             }
         ?>
     </div>
